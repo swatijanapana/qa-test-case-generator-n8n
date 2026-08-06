@@ -1,0 +1,961 @@
+{
+  "name": "Test Case Generator",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -864,
+        528
+      ],
+      "id": "2d4d6f74-abf5-4ad0-ba33-20d743f1e831",
+      "name": "Manual Trigger"
+    },
+    {
+      "parameters": {
+        "operation": "getAll",
+        "options": {
+          "jql": "=project = ShopNestAutomation AND issuetype = Story AND status = \"To Do\" AND sprint = \n\"Sprint 3\""
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        -640,
+        528
+      ],
+      "id": "626a9cfe-f3f0-4107-b975-f5b6489d05d5",
+      "name": "Fetch Jira Stories",
+      "alwaysOutputData": true,
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "AHiMl7WS1oqe9ZzG",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "8a41353b-a1b4-4b70-acd6-21b2172e201b",
+              "name": "story_id",
+              "value": "={{ $json.key }}",
+              "type": "string"
+            },
+            {
+              "id": "602f8162-cd76-4bd9-ae9c-d096423b9961",
+              "name": "description",
+              "value": "={{ $json.fields.description }}",
+              "type": "string"
+            },
+            {
+              "id": "d59e518a-adb9-4131-a7ab-41aea2da42bb",
+              "name": "title",
+              "value": "={{ $json.fields.summary }}",
+              "type": "string"
+            },
+            {
+              "id": "bd64b72c-bde9-4eff-a9c7-4c2ede8e67b7",
+              "name": "priority",
+              "value": "={{ $json.fields.priority.name }}",
+              "type": "string"
+            },
+            {
+              "id": "56d3d384-200e-4a2e-bc3c-253863be5568",
+              "name": "status",
+              "value": "={{ $json.fields.status.name }}",
+              "type": "string"
+            },
+            {
+              "id": "518ef427-33e8-47ff-8d1e-d453c3d21377",
+              "name": "story_type",
+              "value": "={{ $json.fields.issuetype.name }}",
+              "type": "string"
+            },
+            {
+              "id": "b5492fef-6f3e-436f-8723-b55e877bb3c6",
+              "name": "sprint_name",
+              "value": "={{ $json.fields.customfield_10020[0].name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -416,
+        528
+      ],
+      "id": "df0dcc30-63c6-4075-9201-0c1379b7f801",
+      "name": "Extract Story Fields"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -192,
+        528
+      ],
+      "id": "ebb09c96-47d7-4119-a937-99a1720d7479",
+      "name": "Loop Each Story",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json.output;\n\n// Clean the raw output\nconst cleaned = raw\n  .replace(/```json/g, '')\n  .replace(/```/g, '')\n  .replace(/\\\\n/g, '')\n  .replace(/\\n/g, '')\n  .trim();\n\n// Find the JSON array\nconst startBracket = cleaned.indexOf('[');\nconst lastBracket = cleaned.lastIndexOf(']');\n\nif (startBracket === -1 || lastBracket === -1) {\n  throw new Error('No valid JSON array found in output: ' + cleaned.substring(0, 100));\n}\n\nconst jsonString = cleaned.substring(startBracket, lastBracket + 1) + ']';\n\nlet testCases;\ntry {\n  testCases = JSON.parse(cleaned);\n} catch(e) {\n  try {\n    testCases = JSON.parse(jsonString);\n  } catch(e2) {\n    throw new Error('Failed to parse JSON: ' + cleaned.substring(0, 200));\n  }\n}\n\nconst currentStory = $('Extract Story Fields').item.json;\n\nreturn testCases.map((tc, index) => ({\n  json: {\n    ...tc,\n    unique_id: `${currentStory.story_id}-TC${String(index + 1).padStart(3, '0')}`,\n    story_id: currentStory.story_id,\n    story_title: `${currentStory.story_id} - ${currentStory.title}`,\n    'Test Title': tc['Test Title'] || tc.title,\n    test_id: `TC${String(index + 1).padStart(3, '0')}`,\n    sprint_name: currentStory.sprint_name,\n    status: 'Not Executed'\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        768,
+        544
+      ],
+      "id": "6a4be8fe-d590-463e-a953-924e0fddbb35",
+      "name": "Parse Test Cases"
+    },
+    {
+      "parameters": {
+        "sendTo": "test.demouser26@gmail.com",
+        "subject": "QA Test Case Generation Complete",
+        "emailType": "text",
+        "message": "=  Project: ShopNestAutomation\n \n  Sprint: {{ $json.concatenated_Sprint.split(\",\")[0] }}\n  Stories Processed: {{ $json.unique_count_Story_ID }}\n  Test Cases Generated:{{ $json.count_Test_Title }}\n  \n  All user stories have been processed by the AI Test Case Generator.\n  \n  Please check Google Sheets for the generated test cases:\n  - Sheet: {{ $json.concatenated_Sprint.split(\",\")[0] }}\n  - Status: Not Executed\n  - Generated: {{ $now }}\n  \n  This is an automated message from your n8n QA Pipeline.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.2,
+      "position": [
+        720,
+        160
+      ],
+      "id": "a2c58889-261c-4936-a045-f3cb5b81ad28",
+      "name": "Notify QA Team",
+      "webhookId": "5925992f-4e48-41c5-a908-0a7e87af59df",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "4ZRRiQsXO0bEJmwv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "project": {
+          "__rl": true,
+          "value": "10001",
+          "mode": "list",
+          "cachedResultName": "ShopNestAutomation"
+        },
+        "issueType": {
+          "__rl": true,
+          "value": "10010",
+          "mode": "list",
+          "cachedResultName": "Subtask"
+        },
+        "summary": "={{ $json['Test Title'] }}",
+        "additionalFields": {
+          "description": "={{ $json.Preconditions }}",
+          "parentIssueKey": "={{ $json['Story ID'] }}"
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        1984,
+        528
+      ],
+      "id": "18306884-8b51-4788-8c58-724b3f0aa586",
+      "name": "Create Jira Subtask",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "AHiMl7WS1oqe9ZzG",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "fieldsToSummarize": {
+          "values": [
+            {
+              "aggregation": "countUnique",
+              "field": "Story ID"
+            },
+            {
+              "field": "Test Title"
+            },
+            {
+              "aggregation": "concatenate",
+              "field": "Sprint"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.summarize",
+      "typeVersion": 1.1,
+      "position": [
+        528,
+        160
+      ],
+      "id": "dc3be8da-05c4-4e1a-ab40-3e71ce9cf309",
+      "name": "Summarize",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "issueKey": "={{ $json.story_id }}",
+        "updateFields": {
+          "statusId": {
+            "__rl": true,
+            "value": "21",
+            "mode": "id"
+          }
+        }
+      },
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 1,
+      "position": [
+        224,
+        544
+      ],
+      "id": "fe1dc7f3-15d6-48bf-b008-b6226ccf3b65",
+      "name": "Update an issue",
+      "credentials": {
+        "jiraSoftwareCloudApi": {
+          "id": "AHiMl7WS1oqe9ZzG",
+          "name": "Jira SW Cloud account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        32,
+        544
+      ],
+      "id": "04f4104b-e16c-45a4-993d-ebcc89e40c19",
+      "name": "Wait",
+      "webhookId": "5865bf85-1a93-452f-b427-d395363b90f0"
+    },
+    {
+      "parameters": {
+        "amount": 2
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        544
+      ],
+      "id": "71d5574f-5bdf-4eac-9def-ab2b0bd6426c",
+      "name": "Wait1",
+      "webhookId": "fc699114-79fc-4c1f-9abd-ad0ad20788cc"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        288,
+        160
+      ],
+      "id": "5d879264-e54a-4e44-90ea-408e9d084809",
+      "name": "Merge",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "content": "## Happy Path",
+        "height": 544,
+        "width": 1824,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -928,
+        400
+      ],
+      "id": "18a20b68-7c6e-452a-a5d4-5145c3a21c18",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "content": "## Notification:",
+        "height": 384,
+        "width": 912,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        0,
+        16
+      ],
+      "id": "2255085e-564a-4be5-811f-a24229e632bc",
+      "name": "Sticky Note1"
+    },
+    {
+      "parameters": {
+        "content": "## AI Score Test Case",
+        "height": 560,
+        "width": 544,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        896,
+        384
+      ],
+      "id": "e83ff196-bf3b-483b-8a5e-4ccf4a1ba162",
+      "name": "Sticky Note2"
+    },
+    {
+      "parameters": {
+        "content": "## Failed → Alert sent to team",
+        "height": 240,
+        "width": 816,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        704
+      ],
+      "id": "63bf5207-87a6-4a1e-a2c9-af5d58c0061c",
+      "name": "Sticky Note3"
+    },
+    {
+      "parameters": {
+        "content": "## Passed → Logged to Sheets + Jira",
+        "height": 320,
+        "width": 816,
+        "color": 2
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        384
+      ],
+      "id": "1bde9040-5fac-46dd-8877-08eab1b19767",
+      "name": "Sticky Note4"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.5-flash-lite",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        560,
+        768
+      ],
+      "id": "cf9e013d-8994-4d13-8688-4b9581b92abf",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hXAJTrq2GCwaGLfs",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Story: {{ $('Extract Story Fields').item.json.title }}\nDescription: {{ $('Extract Story Fields').item.json.description }}\n\nGenerate exactly 3 test cases:\n- 1 Positive (happy path)\n- 1 Negative (error scenario)  \n- 1 Edge case\n\nRules:\n- Test Title: describe specific scenario, NOT story name\n- Steps: minimum 5 numbered steps, include exact button/field names and data values\n- Expected Result: specific and measurable, max 20 words\n- Cover ALL acceptance criteria from description above\n\nReturn ONLY this JSON format:\n[\n  {\n    \"Test Title\": \"specific scenario description\",\n    \"Preconditions\": \"specific setup required\",\n    \"Steps\": \"1. specific action 2. specific action 3. specific action 4. specific action 5. verify result\",\n    \"Expected Result\": \"specific measurable outcome\",\n    \"Priority\": \"High/Medium/Low\",\n    \"Type\": \"Positive/Negative/Edge\"\n  }\n]",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a senior QA engineer creating test cases that score 7+ out of 10.\n\nScoring criteria:\n- Clarity of steps (1-3): Steps must be numbered, specific, include exact UI element names\n- Completeness of expected result (1-3): Must be measurable and specific\n- Coverage of acceptance criteria (1-4): Must cover all story requirements\n\nReturn ONLY a valid JSON array, no markdown, no code fences.\n\nSTRICT RULE: Generate EXACTLY 3 test cases. No more, no less.\nArray must have exactly 3 objects."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        448,
+        544
+      ],
+      "id": "ff149201-ed4a-40b0-8e40-5368fdb8df91",
+      "name": "Generate Test Case",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Score these test cases for story: {{ $('Extract Story Fields').item.json.title }}\n\nTest Cases:\n{{ $json['Test Title'] }}\n\nSteps:\n{{ $json['Steps'] }}\n\nExpected Results:\n{{ $json['Expected Result'] }}\n\nEvaluate ALL test cases together on:\n1. Clarity of steps (1-3)\n2. Completeness of expected result (1-3)\n3. Coverage of acceptance criteria (1-4)\n\nReturn ONLY this JSON:\n{\n  \"score\": 8,\n  \"approved\": true,\n  \"feedback\": \"reason if score below 10\"\n}\n\n\n\nRules:\n- Score >= 8 = approved true\n- Score < 8 = approved false\n- Max score = 10",
+        "options": {
+          "systemMessage": "You are a QA review expert. Score a batch of test cases.\nReturn ONLY valid JSON, no markdown, no code fences."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        1184,
+        544
+      ],
+      "id": "afc1f279-38b7-4d0d-ab81-33af78f44401",
+      "name": "Score Quality",
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-3.6-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1184,
+        800
+      ],
+      "id": "2ff54bd5-e5da-4253-a5d6-ebea7bc04e08",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "hXAJTrq2GCwaGLfs",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ff3ce0c4-a6d8-4009-8c25-236cc102714c",
+              "leftValue": "={{ JSON.parse($json.output.replace(/\\\\n/g, '').replace(/\\n/g, '')).approved }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1552,
+        544
+      ],
+      "id": "1eb44d68-198f-4329-b18c-14f02a8729db",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "appendOrUpdate",
+        "documentId": {
+          "__rl": true,
+          "value": "1RBQC1q_s320cgJ5Ys_pRGYuIZosjOrPzQe7wGc81cjo",
+          "mode": "list",
+          "cachedResultName": "ShopNest QA Test Cases",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1RBQC1q_s320cgJ5Ys_pRGYuIZosjOrPzQe7wGc81cjo/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Sprint1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1RBQC1q_s320cgJ5Ys_pRGYuIZosjOrPzQe7wGc81cjo/edit#gid=0"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Story ID": "={{ $('Parse Test Cases').item.json.story_id }}",
+            "Unique ID": "={{ $('Parse Test Cases').item.json.unique_id }}",
+            "Story Title": "={{ $('Parse Test Cases').item.json.story_title }}",
+            "Test Title": "={{ $('Parse Test Cases').item.json['Test Title'] }}",
+            "Preconditions": "={{ $('Parse Test Cases').item.json.Preconditions }}",
+            "Steps": "={{ $('Parse Test Cases').item.json.Steps }}",
+            "Expected Result": "={{ $('Parse Test Cases').item.json['Expected Result'] }}",
+            "Priority": "={{ $('Parse Test Cases').item.json.Priority }}",
+            "Type": "={{ $('Parse Test Cases').item.json.Type }}",
+            "Status": "={{ $('Parse Test Cases').item.json.status }}",
+            "Date": "={{$now}}",
+            "Test ID": "={{ $('Parse Test Cases').item.json.test_id }}",
+            "Sprint": "={{ $('Extract Story Fields').item.json.sprint_name }}"
+          },
+          "matchingColumns": [
+            "Unique ID"
+          ],
+          "schema": [
+            {
+              "id": "Unique ID",
+              "displayName": "Unique ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Test ID",
+              "displayName": "Test ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Sprint",
+              "displayName": "Sprint",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Story ID",
+              "displayName": "Story ID",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Story Title",
+              "displayName": "Story Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Test Title",
+              "displayName": "Test Title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Preconditions",
+              "displayName": "Preconditions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Steps",
+              "displayName": "Steps",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Expected Result",
+              "displayName": "Expected Result",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Priority",
+              "displayName": "Priority",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Type",
+              "displayName": "Type",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Status",
+              "displayName": "Status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Date",
+              "displayName": "Date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.6,
+      "position": [
+        1792,
+        528
+      ],
+      "id": "761f03c8-de45-4ebe-aaa3-c1098c433d13",
+      "name": "Google Sheets",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "eJj5L4G8yt2TamGy",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": " test.demouser26@gmail.com",
+        "subject": "=⚠️ QA Alert: Test Cases Failed Quality Check - {{ $('Extract Story Fields').first().json.sprint_name }}",
+        "emailType": "text",
+        "message": "=Project: ShopNestAutomation Sprint: {{ $('Extract Story Fields').first().json.sprint_name }} Story: {{ $('Extract Story Fields').first().json.title }}  Some test cases failed quality check after regeneration and require manual review.  Story ID: {{ $json.story_id }} Status: Failed Quality Check Generated: {{ $now }}  Please manually create test cases for this story or re-run the pipeline.  This is an automated message from your n8n QA Pipeline.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1920,
+        768
+      ],
+      "id": "d0496174-8494-40ef-9c67-0ccdae3045d0",
+      "name": "Gmail",
+      "webhookId": "77afc9f7-16cb-4be9-b2a3-e04bdbad128b",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "4ZRRiQsXO0bEJmwv",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "1ade4796-a355-435d-bf6e-a1843ccc2a77",
+              "name": "Story ID",
+              "value": "={{ $('Google Sheets').item.json['Story ID'] }}",
+              "type": "string"
+            },
+            {
+              "id": "d6ffbbe5-6265-46c5-af6f-604586128e25",
+              "name": "Test Title",
+              "value": "={{ $('Google Sheets').item.json['Test Title'] }}",
+              "type": "string"
+            },
+            {
+              "id": "8ddf0f91-1dd5-4976-aa94-047c0d29ec26",
+              "name": "Priority",
+              "value": "={{ $('Google Sheets').item.json.Priority }}",
+              "type": "string"
+            },
+            {
+              "id": "d48f17f0-3dee-482a-8a6f-621f05be19ea",
+              "name": "Type",
+              "value": "={{ $('Google Sheets').item.json.Type }}",
+              "type": "string"
+            },
+            {
+              "id": "b462a9dd-3011-460b-acbc-14a8fe38efa7",
+              "name": "Sprint",
+              "value": "={{ $('Google Sheets').item.json.Sprint }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        2160,
+        528
+      ],
+      "id": "108cb53d-630f-4206-93dc-5fc58a653b34",
+      "name": "Edit Fields"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch Jira Stories",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Jira Stories": {
+      "main": [
+        [
+          {
+            "node": "Extract Story Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Story Fields": {
+      "main": [
+        [
+          {
+            "node": "Loop Each Story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Each Story": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ],
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Test Cases": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Update an issue",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Summarize",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update an issue": {
+      "main": [
+        [
+          {
+            "node": "Generate Test Case",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Generate Test Case",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Score Quality",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Score Quality",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Quality": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Google Sheets",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gmail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Sheets": {
+      "main": [
+        [
+          {
+            "node": "Create Jira Subtask",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Test Case": {
+      "main": [
+        [
+          {
+            "node": "Parse Test Cases",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Jira Subtask": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Loop Each Story",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Summarize": {
+      "main": [
+        [
+          {
+            "node": "Notify QA Team",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "230e4f80-c9cc-4f84-96fe-d7689cb4e77a",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "c60e4f3b0afc16c7873edd72c102bc9d2a99a467196d2d11d9fe5cf6100dacb5"
+  },
+  "nodeGroups": [],
+  "id": "3BF804FWYjawYhwr",
+  "tags": []
+}
